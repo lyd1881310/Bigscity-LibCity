@@ -43,6 +43,13 @@ def get_model(config, data_feature):
                            config['model'])(config, data_feature)
         except AttributeError:
             raise AttributeError('model is not found')
+    elif config['task'] == 'traj_gen':
+        try:
+            return getattr(importlib.import_module('libcity.model.trajectory_generation'),
+                           config['model'])(config, data_feature)
+        except AttributeError:
+            print(config['model'])
+            raise AttributeError('model not found')
     elif config['task'] == 'traffic_state_pred':
         try:
             return getattr(importlib.import_module('libcity.model.traffic_flow_prediction'),

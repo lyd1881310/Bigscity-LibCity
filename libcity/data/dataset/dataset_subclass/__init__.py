@@ -32,6 +32,11 @@ from libcity.data.dataset.dataset_subclass.stpgcn_dataset import STPGCNDataset
 from libcity.data.dataset.dataset_subclass.staeformer_dataset import STAEformerDataset
 from libcity.data.dataset.dataset_subclass.simst_dataset import SimSTDataset
 from libcity.data.dataset.dataset_subclass.stwave_dataset import STWaveDataset
+from libcity.data.dataset.dataset_subclass.svae_dataset import SVAEDataset
+from libcity.data.dataset.dataset_subclass.imgtrajgen_dataset import ImgTrajGenDataset
+from libcity.data.dataset.dataset_subclass.movesim_dataset import MoveSimDataset
+from libcity.data.dataset.dataset_subclass.difftraj_dataset import DiffTrajDataset
+
 
 __all__ = [
     "ACFMDataset",
@@ -67,5 +72,9 @@ __all__ = [
     "HIESTDataset",
     "STAEformerDataset",
     "SimSTDataset",
-    "STWaveDataset"
+    "STWaveDataset",
+    "SVAEDataset",
+    "ImgTrajGenDataset",
+    "MoveSimDataset",
+    "DiffTrajDataset"
 ]

@@ -18,6 +18,11 @@ from libcity.executor.testam_executor import TESTAMExecutor
 from libcity.executor.timemixer_executor import TimeMixerExecutor
 from libcity.executor.STSSL_executor import STSSLExecutor
 from libcity.executor.megacrn_executor import MegaCRNExecutor
+from libcity.executor.svae_executor import SVAEExecutor
+from libcity.executor.imgtrajgen_executor import ImgTrajGenExecutor
+from libcity.executor.movesim_executor import MoveSimExecutor
+from libcity.executor.difftraj_executor import DiffTrajExecutor
+
 
 __all__ = [
     "TrajLocPredExecutor",
@@ -40,4 +45,8 @@ __all__ = [
     "TimeMixerExecutor",
     "STSSLExecutor",
     "MegaCRNExecutor",
+    "SVAEExecutor",
+    "ImgTrajGenExecutor",
+    "MoveSimExecutor",
+    "DiffTrajExecutor"
 ]

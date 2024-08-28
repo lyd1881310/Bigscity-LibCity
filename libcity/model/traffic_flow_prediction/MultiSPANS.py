@@ -279,7 +279,7 @@ class Infomap_Multi_Mask_Generator(Mask_Bias_Generator):
         self._gen_mask()
 
     def _gen_mask(self):
-        self.im.run()
+        self.im._train_epoch()
         im = self.im
         num_levels = im.num_levels
         max_num_module = im.num_leaf_modules

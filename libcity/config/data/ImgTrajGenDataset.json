@@ -1,0 +1,8 @@
+{
+  "img_unit": 0.005,
+  "img_eps": 0.001,
+  "imsize":64,
+  "train_rate": 0.7,
+  "eval_rate": 0.1,
+  "batch_size": 32
+}

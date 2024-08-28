@@ -42,16 +42,21 @@ def run_model(task=None, model_name=None, dataset_name=None, config_file=None,
     # seed
     seed = config.get('seed', 0)
     set_random_seed(seed)
+
     # 加载数据集
     dataset = get_dataset(config)
     # 转换数据，并划分数据集
     train_data, valid_data, test_data = dataset.get_data()
     data_feature = dataset.get_data_feature()
+
     # 加载执行器
     model_cache_file = './libcity/cache/{}/model_cache/{}_{}.m'.format(
         exp_id, model_name, dataset_name)
     model = get_model(config, data_feature)
+    print(model)
+
     executor = get_executor(config, model, data_feature)
+
     # 训练
     if train or not os.path.exists(model_cache_file):
         executor.train(train_data, valid_data)
@@ -59,6 +64,7 @@ def run_model(task=None, model_name=None, dataset_name=None, config_file=None,
             executor.save_model(model_cache_file)
     else:
         executor.load_model(model_cache_file)
+
     # 评估，评估结果将会放在 cache/evaluate_cache 下
     executor.evaluate(test_data)
 

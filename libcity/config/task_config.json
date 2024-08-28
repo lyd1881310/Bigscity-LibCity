@@ -1,4 +1,28 @@
 {
+    "traj_gen": {
+        "allowed_model": ["SVAE", "ImgTrajGen", "MoveSim", "DiffTraj"],
+        "allowed_dataset": ["foursquare_nyc", "BJ_TAXI", "XA_TAXI", "CD_TAXI"],
+        "SVAE": {
+            "dataset_class": "SVAEDataset",
+            "executor": "SVAEExecutor",
+            "evaluator": "TrajGenEvaluator"
+        },
+        "ImgTrajGen": {
+            "dataset_class": "ImgTrajGenDataset",
+            "executor": "ImgTrajGenExecutor",
+            "evaluator": "TrajGenEvaluator"
+        },
+        "MoveSim": {
+            "dataset_class": "MoveSimDataset",
+            "executor": "MoveSimExecutor",
+            "evaluator": "TrajGenEvaluator"
+        },
+        "DiffTraj": {
+            "dataset_class": "DiffTrajDataset",
+            "executor": "DiffTrajExecutor",
+            "evaluator": "TrajGenEvaluator"
+        }
+    },
     "traj_loc_pred": {
         "allowed_model": ["DeepMove", "RNN", "LSTM", "GRU", "FPMC", "LSTPM", "STRNN", "SERM", "TemplateTLP", "ATSTLSTM", "HSTLSTM", "STAN", "CARA", "GeoSAN"],
         "allowed_dataset": ["foursquare_tky", "foursquare_nyc", "gowalla", "foursquare_serm"],

@@ -1,0 +1,11 @@
+{
+  "dis_pre_epoch": 5,
+  "dis_pre_lr": 1e-6,
+  "gen_pre_epoch": 100,
+  "gen_pre_lr": 1e-2,
+  "dis_gan_lr": 1e-5,
+  "gen_gan_lr": 1e-4,
+  "rollout_update_rate": 0.8,
+  "rollout_num": 16,
+  "gan_epoch": 10
+}

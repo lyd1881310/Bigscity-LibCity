@@ -1,0 +1,7 @@
+{
+  "seq_len": 24,
+  "tim_num": 24,
+  "train_rate": 0.7,
+  "eval_rate": 0.1,
+  "batch_size": 32
+}

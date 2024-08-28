@@ -21,7 +21,7 @@ class MapMatchingExecutor(AbstractTraditionExecutor):
         Args:
             test_data
         """
-        result = self.model.run(test_data)
+        result = self.model._train_epoch(test_data)
         batch = {'route': test_data['route'], 'result': result, 'rd_nwk': test_data['rd_nwk']}
         self.evaluator.collect(batch)
         self.evaluator.save_result(self.evaluate_res_dir)

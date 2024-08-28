@@ -1,0 +1,6 @@
+{
+  "traj_len": 200,
+  "train_rate": 0.7,
+  "eval_rate": 0.1,
+  "batch_size": 64
+}

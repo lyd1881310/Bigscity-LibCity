@@ -1,0 +1,12 @@
+{
+  "loc_embedding_dim": 256,
+  "tim_embedding_dim": 16,
+  "hidden_dim": 64,
+  "attn_layer_num": 2,
+  "tim_num": 24,
+  "bidirectional": false,
+  "function": false,
+  "starting_sample": "real",
+  "disc_embedding_dim": 64,
+  "dropout": 0.6
+}

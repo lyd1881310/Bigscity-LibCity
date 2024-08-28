@@ -24,7 +24,7 @@ class GensimExecutor(AbstractExecutor):
         """
         use data to train model with config
         """
-        self.model.run()
+        self.model._train_epoch()
 
     def load_model(self, cache_name):
         pass

@@ -1,0 +1,8 @@
+{
+  "dcgan_epoch": 25,
+  "lr": 0.0002,
+  "beta1": 0.5,
+  "save_epoch": 2,
+
+  "seq2seq_epoch": 5
+}
