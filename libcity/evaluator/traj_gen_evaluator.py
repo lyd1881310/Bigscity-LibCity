@@ -8,8 +8,6 @@ from scipy.stats import entropy
 
 from libcity.evaluator.abstract_evaluator import AbstractEvaluator
 from logging import getLogger
-allowed_metrics = ['Distance', 'DTW']
-from collections import defaultdict
 
 
 class TrajGenEvaluator(AbstractEvaluator):
@@ -24,10 +22,8 @@ class TrajGenEvaluator(AbstractEvaluator):
         self.latlon_to_xy = pyproj.Transformer.from_crs(4326, self.config['utm'])
 
         self.data_collector = {'real': [], 'gen': []}
-        self.macro_metrics = config.get('macro_metrics', [])
-        self.micro_metrics = config.get('micro_metrics', [])
+        self.macro_metrics = ['Distance', 'Radius']
         self.result = dict()
-        self._check_config()
         self._logger = getLogger()
 
     def _load_coords(self):
@@ -59,19 +55,18 @@ class TrajGenEvaluator(AbstractEvaluator):
             traj_df.loc[idx, 'Radius'] = attr['Radius']
         return traj_df
 
+    def _calc_loc_freq(self, traj_df):
+        loc_freq = np.zeros(len(self.loc_to_lonlat))
+        for _, row in traj_df.iterrows():
+            for loc in row['loc_list']:
+                loc_freq[loc] += 1
+        loc_freq = loc_freq / loc_freq.sum()
+        return loc_freq
+
     @staticmethod
     def _jsd(p, q):
         m = (p + q) / 2
         return 0.5 * entropy(p, m) + 0.5 * entropy(q, m)
-
-    def _check_config(self):
-        # if not isinstance(self.metrics, list):
-        #     raise TypeError('Evaluator type is not list')
-        # for i in self.metrics:
-        #     if i not in allowed_metrics:
-        #         raise ValueError('the metric is not allowed in \
-        #             TrajLocPredEvaluator')
-        pass
 
     def collect(self, batch):
         """
@@ -80,33 +75,38 @@ class TrajGenEvaluator(AbstractEvaluator):
         """
         if not isinstance(batch, dict):
             raise TypeError('evaluator.collect input is not a dict of user')
-        self.data_collector['real'] += [(idx, traj[0], traj) for idx, traj in enumerate(batch['real']) if len(traj) > 0]
-        self.data_collector['gen'] += [(idx, traj[0], traj) for idx, traj in enumerate(batch['gen']) if len(traj) > 0]
+        self.data_collector['real'] += [(traj[0], traj) for idx, traj in enumerate(batch['real']) if len(traj) > 0]
+        self.data_collector['gen'] += [(traj[0], traj) for idx, traj in enumerate(batch['gen']) if len(traj) > 0]
 
     def evaluate(self):
-        real_df = pd.DataFrame(data=self.data_collector['real'], columns=['tid', 'start_loc', 'loc_list'])
-        gen_df = pd.DataFrame(data=self.data_collector['gen'], columns=['tid', 'start_loc', 'loc_list'])
+        real_df = pd.DataFrame(data=self.data_collector['real'], columns=['start_loc', 'loc_list'])
+        gen_df = pd.DataFrame(data=self.data_collector['gen'], columns=['start_loc', 'loc_list'])
         real_df = self._calc_macro_metrics(real_df)
         gen_df = self._calc_macro_metrics(gen_df)
-
+        # 轨迹的统计特征
         for metric in self.macro_metrics:
             min_val = min(real_df[metric].min(), gen_df[metric].min())
             max_val = max(real_df[metric].max(), gen_df[metric].max())
             real_hist, _ = np.histogram(real_df[metric], bins=50, range=(min_val, max_val), density=True)
             gen_hist, _ = np.histogram(gen_df[metric], bins=50, range=(min_val, max_val), density=True)
             self.result[metric] = self._jsd(real_hist, gen_hist)
+        # 各位置的访问频率
+        real_loc_freq = self._calc_loc_freq(real_df)
+        gen_loc_freq = self._calc_loc_freq(gen_df)
+        self.result['LocFreq'] = self._jsd(real_loc_freq, gen_loc_freq)
         return self.result
 
-    def save_result(self, save_path, filename=None):
+    def save_result(self, save_dir, filename=None):
         self.evaluate()
-        if not os.path.exists(save_path):
-            os.mkdir(save_path)
+        if not os.path.exists(save_dir):
+            # os.mkdir(save_path)
+            os.makedirs(save_dir, exist_ok=True)
         if filename is None:
             # 使用时间戳
             filename = time.strftime(
                 "%Y_%m_%d_%H_%M_%S", time.localtime(time.time()))
         self._logger.info('evaluate result is {}'.format(json.dumps(self.result, indent=1)))
-        with open(os.path.join(save_path, '{}.json'.format(filename)), 'w') as f:
+        with open(os.path.join(save_dir, '{}.json'.format(filename)), 'w') as f:
             json.dump(self.result, f)
 
     def clear(self):

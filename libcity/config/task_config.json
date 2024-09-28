@@ -1,7 +1,7 @@
 {
     "traj_gen": {
         "allowed_model": ["SVAE", "ImgTrajGen", "MoveSim", "DiffTraj"],
-        "allowed_dataset": ["foursquare_nyc", "BJ_TAXI", "XA_TAXI", "CD_TAXI"],
+        "allowed_dataset": ["BJ_TAXI", "XA_TAXI", "CD_TAXI"],
         "SVAE": {
             "dataset_class": "SVAEDataset",
             "executor": "SVAEExecutor",

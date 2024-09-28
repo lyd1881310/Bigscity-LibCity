@@ -5,8 +5,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torchvision import transforms
-from torch.utils.data import TensorDataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from libcity.data.dataset import AbstractDataset
@@ -21,40 +20,44 @@ class DiffTrajDataset(AbstractDataset):
         self.geo_file = config.get('geo_file', self.dataset)
         self.dyna_file = config.get('dyna_file', self.dataset)
         self.data_path = './raw_data/{}/'.format(self.dataset)
-        self.geo_df = (pd.read_csv(os.path.join(self.data_path, f'{self.geo_file}.geo'))
-                       .set_index('geo_id', drop=True))
+        # self.geo_df = (pd.read_csv(os.path.join(self.data_path, f'{self.geo_file}.geo'))
+        #                .set_index('geo_id', drop=True))
+        self.geo_df = pd.read_csv(os.path.join(self.data_path, f'{self.geo_file}.geo'))
         self.dyna_df = pd.read_csv(os.path.join(self.data_path, f'{self.dyna_file}.dyna'))
         self.traj_len = config['traj_len']
         self.data, self.mean_lon, self.mean_lat, self.std_lon, self.std_lat = self._preprocess()
 
     def get_data(self):
-        train_num = math.ceil(self.data.shape[0] * self.config['train_rate'])
-        eval_num = math.ceil(self.data.shape[0] * self.config['eval_rate'])
-        train_data = self.data[:train_num, :, :]
-        eval_data = self.data[train_num: train_num + eval_num, :, :]
-        test_data = self.data[train_num + eval_num:, :, :]
+        train_num = math.ceil(len(self.data) * self.config['train_rate'])
+        eval_num = math.ceil(len(self.data) * self.config['eval_rate'])
+        train_data = self.data[:train_num]
+        eval_data = self.data[train_num: train_num + eval_num]
+        test_data = self.data[train_num + eval_num:]
         return self._get_dataloader(train_data), self._get_dataloader(eval_data), self._get_dataloader(test_data)
 
     def _get_dataloader(self, data):
         def collator(indices):
-            return torch.from_numpy(np.stack(indices, axis=0)).to(self.device).swapdims(1, 2)
+            gps = (torch.from_numpy(np.stack([traj['gps'] for traj in indices], axis=0))
+                   .to(self.device).swapdims(1, 2))
+            loc_list = [traj['loc_list'] for traj in indices]
+            return {'gps': gps, 'loc_list': loc_list}
         dataset = ListDataset(data)
         return DataLoader(dataset, batch_size=self.config['batch_size'], shuffle=True, collate_fn=collator)
-        # dataset = TensorDataset(torch.from_numpy(data).swapdims(1, 2))
-        # return DataLoader(dataset, batch_size=self.config['batch_size'], shuffle=True,
-        #                   collate_fn=lambda batch: batch.to(self.device))
 
     def _preprocess(self):
-        gps_data = []
+        gps_arr_list, traj_list = [], []
         for uid, traj in self.dyna_df.groupby('entity_id'):
             gps_list = []
-            for loc_id in traj['location'].tolist():
+            loc_list = traj['location'].tolist()
+            for loc_id in loc_list:
                 gps_list += eval(self.geo_df.loc[loc_id, "coordinates"])
             gps_arr = self._resample(gps_list)
-            gps_data.append(gps_arr)
-        random.shuffle(gps_data)
-        gps_data = np.array(gps_data, dtype=np.float32)
-        return self._normalize(gps_data)
+            gps_arr_list.append(gps_arr)
+            traj_list.append(loc_list)
+        coords = np.array(gps_arr_list, dtype=np.float32)
+        coords, mean_lon, mean_lat, std_lon, std_lat = self._normalize(coords)
+        data_list = [{'gps': coords[i], 'loc_list': traj_list[i]} for i in range(len(coords))]
+        return data_list, mean_lon, mean_lat, std_lon, std_lat
 
     def _resample(self, gps_list):
         # 删除重复的 GPS 点
@@ -90,5 +93,6 @@ class DiffTrajDataset(AbstractDataset):
             'mean_lon': self.mean_lon,
             'mean_lat': self.mean_lat,
             'std_lon': self.std_lon,
-            'std_lat': self.std_lat
+            'std_lat': self.std_lat,
+            'geo': self.geo_df
         }

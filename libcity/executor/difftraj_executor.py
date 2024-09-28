@@ -2,11 +2,11 @@ import numpy as np
 import os
 import copy
 from logging import getLogger
-
 import torch
 import torch.nn as nn
 from torch.optim import Adam, AdamW
 import torch.nn.functional as F
+from tqdm import tqdm
 
 from libcity.executor.abstract_executor import AbstractExecutor
 from libcity.utils import get_evaluator
@@ -28,6 +28,10 @@ class DiffTrajExecutor(AbstractExecutor):
             self.ema_helper.register(self.model)
         else:
             self.ema_helper = None
+        self.evaluator = get_evaluator(config)
+        self.exp_id = self.config['exp_id']
+        self.cache_dir = './libcity/cache/{}/model_cache'.format(self.exp_id)
+        self.evaluate_res_dir = './libcity/cache/{}/evaluate_cache'.format(self.exp_id)
         self._logger = getLogger()
 
     def train(self, train_dataloader, eval_dataloader):
@@ -41,11 +45,11 @@ class DiffTrajExecutor(AbstractExecutor):
         for epoch in range(self.config['n_epochs']):
             loss = self._train_epoch(train_dataloader)
             self._logger.info(f'Epoch {epoch} loss {loss: .6f}')
-        # self.save_model()
 
     def _train_epoch(self, train_loader):
         avg_loss = 0
         for index, batch in enumerate(train_loader):
+            batch = batch['gps']
             t = torch.randint(low=0, high=self.n_steps, size=(len(batch) // 2 + 1, )).to(self.device)
             t = torch.cat([t, self.n_steps - t - 1], dim=0)[:len(batch)]
             # Get the noised images (xt) and the noise (our target)
@@ -54,7 +58,7 @@ class DiffTrajExecutor(AbstractExecutor):
             pred_noise = self.model(xt.float(), t)
             # Compare the predictions with the targets
             loss = F.mse_loss(noise.float(), pred_noise)
-            self._logger.info("train batch index: %d, MSE Loss: %.8f" % (index, loss.item()))
+            # self._logger.info("train batch index: %d, MSE Loss: %.8f" % (index, loss.item()))
             # Store the loss for later viewing
             avg_loss += loss.item()
             self.optim.zero_grad()
@@ -79,29 +83,33 @@ class DiffTrajExecutor(AbstractExecutor):
     def evaluate(self, test_dataloader):
         """
         use model to test data
-
         Args:
             test_dataloader(torch.Dataloader): Dataloader
         """
-        raise NotImplementedError("Executor evaluate not implemented")
+        for batch in tqdm(test_dataloader, total=len(test_dataloader), desc='DiffTraj generating'):
+            gen_traj = self.model.generate(batch)
+            self.evaluator.collect({'gen': gen_traj, 'real': batch['loc_list']})
+        self.evaluator.evaluate()
+        self.evaluator.save_result(self.evaluate_res_dir, 'difftraj_evaluate')
 
     def load_model(self, cache_name):
         """
         加载对应模型的 cache
-
         Args:
             cache_name(str): 保存的文件名
         """
-        raise NotImplementedError("Executor load cache not implemented")
+        state = torch.load(cache_name, map_location=self.device)
+        self.model.load_state_dict(state)
 
     def save_model(self, cache_name):
         """
         将当前的模型保存到文件
-
         Args:
             cache_name(str): 保存的文件名
         """
-        raise NotImplementedError("Executor save cache not implemented")
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+        torch.save(self.model.state_dict(), cache_name)
 
 
 class EMAHelper(object):

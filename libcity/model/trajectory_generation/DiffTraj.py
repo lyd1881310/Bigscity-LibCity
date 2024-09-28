@@ -1,7 +1,11 @@
+import ast
+import math
+import rtree
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from shapely.geometry import LineString, Point
 
 from libcity.model.abstract_traj_gen_model import AbstractTrajectoryGenerationModel
 
@@ -12,11 +16,103 @@ class DiffTraj(AbstractTrajectoryGenerationModel):
     def __init__(self, config, data_feature):
         super().__init__(config, data_feature)
         self.config = config
-        self.data_feature = data_feature
-        self.unet = Model(config)
+        self.mean = np.array([data_feature['mean_lon'], data_feature['mean_lat']])
+        self.std = np.array([data_feature['std_lon'], data_feature['std_lat']])
+        self.geo_rtree, self.geo_dict = self._build_rtree(data_feature['geo'])
+
+        self.unet = UnetModel(config)
+        self.device = config['device']
+        self.n_steps = config['num_diffusion_timesteps']
+        self.beta = torch.linspace(config['beta_start'], config['beta_end'], self.n_steps).to(self.device)
+        self.traj_len = config['traj_len']
+        self.alpha = 1. - self.beta
+        self.eta = 0.0
+        self.timesteps = 100
+        self.skip = self.n_steps // self.timesteps
+        self.seq = range(0, self.n_steps, self.skip)
 
     def generate(self, batch):
-        pass
+        """
+        为了统一输出轨迹, 此处将生成的 GPS 轨迹转换为路段序列
+        """
+        batch_size = len(batch['gps'])
+        x = torch.randn(batch_size, 2, self.traj_len).to(self.device)
+        seq_next = [-1] + list(self.seq[:-1])
+        for i, j in zip(reversed(self.seq), reversed(seq_next)):
+            t = (torch.ones(batch_size) * i).to(self.device)
+            next_t = (torch.ones(batch_size) * j).to(self.device)
+            with torch.no_grad():
+                pred_noise = self.unet(x, t)
+                x = self._p_xt(x, pred_noise, t, next_t, self.beta, self.eta)
+        norm_coords = x.transpose(1, 2).cpu().numpy()  # (batch_size, traj_len, 2)
+        gps = norm_coords * self.std + self.mean
+
+        gen_traj = []
+        for i in range(len(gps)):
+            loc_list = self._gps_to_loc(gps[i])
+            gen_traj.append(loc_list)
+        return gen_traj
+
+    def _gps_to_loc(self, gps, d_lon=0.0005, d_lat=0.0005):
+        """
+        Args:
+            gps: np.ndarray (traj_len, 2)
+        Returns: List
+        """
+        loc_list = []
+        for step in range(len(gps)):
+            lon, lat = gps[step][0], gps[step][1]
+            query_ids = list(self.geo_rtree.intersection((lon - d_lon, lat - d_lat,
+                                                          lon + d_lon, lat + d_lat)))
+            target_rid, min_dist = -1, math.inf
+            for geo_id in query_ids:
+                line = self.geo_dict[geo_id]
+                distance = Point(lon, lat).distance(line)
+                if distance < min_dist:
+                    target_rid, min_dist = geo_id, distance
+            if target_rid != -1:
+                loc_list.append(target_rid)
+        return self._merge_dup(loc_list)
+
+    @staticmethod
+    def _merge_dup(loc_list):
+        if len(loc_list) == 0:
+            return []
+        result = [loc_list[0]]
+        for num in loc_list[1:]:
+            if num != result[-1]:
+                result.append(num)
+        return result
+
+    @staticmethod
+    def _build_rtree(geo_df):
+        """
+        构建 Rtree, 用于加速检索最近的路段
+        """
+        geom_dict = {
+            row['geo_id']: LineString(ast.literal_eval(row['coordinates']))
+            for _, row in geo_df.iterrows()
+        }  # 安全解析坐标字符串
+        geo_rtree = rtree.index.Index()
+        for geo_id, line in geom_dict.items():
+            geo_rtree.insert(id=geo_id, coordinates=line.bounds, obj=line)
+        return geo_rtree, geom_dict
+
+    def _p_xt(self, xt, noise, t, next_t, beta, eta):
+        at = self._compute_alpha(beta, t.long())
+        at_next = self._compute_alpha(beta, next_t.long())
+        x0_t = (xt - noise * (1 - at).sqrt()) / at.sqrt()
+        c1 = (eta * ((1 - at / at_next) * (1 - at_next) / (1 - at)).sqrt())
+        c2 = ((1 - at_next) - c1 ** 2).sqrt()
+        eps = torch.randn(xt.shape, device=xt.device)
+        xt_next = at_next.sqrt() * x0_t + c1 * eps + c2 * noise
+        return xt_next
+
+    @staticmethod
+    def _compute_alpha(beta, t):
+        beta = torch.cat([torch.zeros(1).to(beta.device), beta], dim=0)
+        a = (1 - beta).cumprod(dim=0).index_select(0, t + 1).view(-1, 1, 1)
+        return a
 
     def forward(self, batch, t):
         return self.unet(batch, t)
@@ -44,13 +140,6 @@ class WideAndDeep(nn.Module):
         # self.wide_fc = nn.Linear(5, embedding_dim)
         self.wide_fc = nn.Linear(4, embedding_dim)
 
-        # Deep part (neural network for categorical attributes)
-        # self.depature_embedding = nn.Embedding(288, hidden_dim)
-        # self.sid_embedding = nn.Embedding(257, hidden_dim)
-        # self.eid_embedding = nn.Embedding(257, hidden_dim)
-        # self.deep_fc1 = nn.Linear(hidden_dim*3, embedding_dim)
-        # self.deep_fc2 = nn.Linear(embedding_dim, embedding_dim)
-
         # 离散特征: 星期几、出发路段 ID、达到路段 ID
         self.week_embedding = nn.Embedding(7, hidden_dim)
         self.sid_embedding = nn.Embedding(config.model.roads_num, hidden_dim)
@@ -62,7 +151,6 @@ class WideAndDeep(nn.Module):
         """
         attr: (batch_size, attr_num)
         """
-
         # Continuous attributes
         # continuous_attrs = attr[:, 1:6]
         continuous_attrs = attr[:, :4].float()
@@ -251,7 +339,7 @@ class AttnBlock(nn.Module):
         return x + h_
 
 
-class Model(nn.Module):
+class UnetModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -393,14 +481,14 @@ class Model(nn.Module):
         return h
 
 
-class Guide_UNet(nn.Module):
+class GuideUNet(nn.Module):
     def __init__(self, config):
-        super(Guide_UNet, self).__init__()
+        super(GuideUNet, self).__init__()
         self.config = config
         self.ch = config.model.ch * 4
         self.attr_dim = config.model.attr_dim
         self.guidance_scale = config.model.guidance_scale
-        self.unet = Model(config)
+        self.unet = UnetModel(config)
         # self.guide_emb = Guide_Embedding(self.attr_dim, self.ch)
         # self.place_emb = Place_Embedding(self.attr_dim, self.ch)
         self.guide_emb = WideAndDeep(config, self.ch)
